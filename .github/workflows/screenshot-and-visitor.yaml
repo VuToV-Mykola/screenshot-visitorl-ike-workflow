@@ -467,12 +467,7 @@ jobs:
                 echo ""
                 echo "## 📸 Latest Screenshot"
                 echo "![Project Screenshot]($SCREENSHOT_DIR/screenshot.png)"
-                echo "🔄 *Screenshot automatically updated every 2 hours*"
-              else
-                echo "ℹ️ Screenshot section skipped: file is empty"
               fi
-            else
-              echo "ℹ️ Screenshot section skipped: screenshot not available"
             fi
             
             echo "<!-- END:AUTOGEN -->"
