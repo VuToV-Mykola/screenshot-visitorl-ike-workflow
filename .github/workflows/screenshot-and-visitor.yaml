@@ -238,6 +238,7 @@ jobs:
           # Додаємо стандартні інструменти
           TECH_BADGES="$TECH_BADGES[![VS Code](https://img.shields.io/badge/VS_Code-007ACC?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://code.visualstudio.com/) "
           TECH_BADGES="$TECH_BADGES[![GitHub](https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/) "
+          TECH_BADGES="$TECH_BADGES[![Figma](https://img.shields.io/badge/Figma-F24E1E?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com/) "
 
           echo "$TECH_BADGES" > "$DATA_DIR/tech-badges.txt"
 
@@ -320,8 +321,31 @@ jobs:
               const githubPages = 'https://' + '${{ github.repository_owner }}' + '.github.io/' + '${{ github.event.repository.name }}' + '/';
               const indexPath = path.join(process.cwd(), 'index.html');
               
-              let targetUrl = fs.existsSync(indexPath) ? 'file://' + indexPath : githubPages;
-              console.log('📡 Target URL:', targetUrl);
+              let targetUrl = null;
+              let reason = '';
+              
+              if (fs.existsSync(indexPath)) {
+                targetUrl = 'file://' + indexPath;
+                console.log('📡 Using local index.html file');
+              } else {
+                try {
+                  const response = await fetch(githubPages);
+                  if (response.ok) {
+                    targetUrl = githubPages;
+                    console.log('📡 Using GitHub Pages URL:', githubPages);
+                  } else {
+                    reason = 'GitHub Pages not accessible (HTTP ' + response.status + ')';
+                  }
+                } catch (fetchError) {
+                  reason = 'GitHub Pages not available: ' + fetchError.message;
+                }
+              }
+              
+              if (!targetUrl) {
+                console.log('⚠️ Screenshot skipped - ' + reason);
+                console.log('💡 To enable screenshots: create index.html file or setup GitHub Pages');
+                return;
+              }
 
               await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
               await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -335,24 +359,9 @@ jobs:
               console.log('✅ Screenshot created:', Math.round(stats.size / 1024) + 'KB');
               
             } catch (error) {
-              console.error('❌ Screenshot failed:', error.message);
-              
-              const screenshotDir = process.env.SCREENSHOT_DIR || 'assets';
-              const screenshotPath = path.resolve(screenshotDir, 'screenshot.png');
-              if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir, { recursive: true });
-              
-              const { createCanvas } = require('canvas');
-              const canvas = createCanvas(800, 600);
-              const ctx = canvas.getContext('2d');
-              ctx.fillStyle = '#f0f0f0';
-              ctx.fillRect(0, 0, 800, 600);
-              ctx.fillStyle = '#333';
-              ctx.font = '24px Arial';
-              ctx.textAlign = 'center';
-              ctx.fillText('Screenshot not available', 400, 300);
-              
-              fs.writeFileSync(screenshotPath, canvas.toBuffer('image/png'));
-              console.log('ℹ️ Created fallback screenshot');
+              console.log('❌ Screenshot failed:', error.message);
+              console.log('⚠️ Screenshot skipped - unable to capture page');
+              console.log('💡 Possible reasons: page not loading, network issues, or missing content');
             } finally {
               if (browser) await browser.close();
             }
