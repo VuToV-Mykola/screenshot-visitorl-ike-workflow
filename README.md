@@ -33,7 +33,24 @@
 
 ### 1.2 Структура файлів (створюється автоматично)
 
-\`\`\` your-repo/ ├── .github/ │ └── workflows/ │ └── screenshot-and-visitor.yaml ├── assets/ │ ├── db/ │ │ ├── visitors-badge.json # Бейдж відвідувачів │ │ ├── likes-badge.json # Бейдж лайків │ │ ├── stargazers.json # Список користувачів зі зірками │ │ ├── manual-likes.json # Мануальні лайки │ │ ├── unique-users.json # Загальна статистика користувачів │ │ ├── repo-language.json # Основна мова програмування │ │ ├── repo-size.json # Розмір репозиторію │ │ ├── repo-license.json # Ліцензія репозиторію │ │ └── stats-data.json # Загальна статистика │ └── screenshot.png # Скриншот сторінки ├── index.html # Ваша головна сторінка └── README.md \`\`\`
+### 3. Структура папок
+
+Workflow автоматично створить наступну структуру:
+
+### 3. Структура папок
+
+Workflow автоматично створить наступну структуру:
+
+\`\`\`
+assets/
+├── db/
+│   ├── visitors-badge.json      # Бейдж відвідувачів
+│   ├── likes-badge.json         # Бейдж лайків
+│   ├── stargazers.json          # Детальна інформація про користувачів зірок
+│   ├── manual-likes.json        # Мануальні лайки
+│   └── unique-users.json        # Загальна статистика користувачів
+└── screenshot.png               # Автоматичний скриншот
+\`\`\`
 
 ## 🔑 Крок 2: Налаштування дозволів (Автоматично)
 
