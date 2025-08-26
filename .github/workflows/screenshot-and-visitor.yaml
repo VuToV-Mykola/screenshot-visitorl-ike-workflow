@@ -24,11 +24,14 @@ env:
   LIKES_COLOR: 'gold'
   DATA_DIR: 'assets/db'
   SCREENSHOT_DIR: 'assets'
-
 jobs:
   update-readme-and-visitor:
     runs-on: ubuntu-latest
-
+    env:
+      # Додаємо ці змінні для кращого контролю
+      NODE_VERSION: '20.x'
+      PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: 'false'
+      PUPPETEER_EXECUTABLE_PATH: '/usr/bin/google-chrome-stable'
     steps:
       - name: 🔥 Checkout repository
         uses: actions/checkout@v4
@@ -279,157 +282,313 @@ jobs:
           echo "✅ All statistics collected: Views=$VIEWS, Stars=$STARS_COUNT, Manual=$MANUAL_LIKES_COUNT, Total=$TOTAL_LIKES"
           echo "👥 Total unique engaged users: $TOTAL_UNIQUE_USERS"
 
-      - name: 🖥 Setup Node.js and dependencies
-        run: |
-          # Setup Node.js
-          curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-          sudo apt-get install -y nodejs
-
-          # Setup Chrome
-          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg
-          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable jq libgbm-dev
-
-          # Install Node dependencies
-          npm install --no-package-lock --no-save puppeteer@latest
-
-          echo "✅ All dependencies installed"
-
-      - name: 📸 Generate screenshot
-        run: |
-          SCREENSHOT_CREATED=false
-
-          node -e "
-          const puppeteer = require('puppeteer');
-          const fs = require('fs');
-          const path = require('path');
-
-          async function takeScreenshot() {
-            let browser;
-            try {
-              const screenshotDir = process.env.SCREENSHOT_DIR || 'assets';
-              const screenshotPath = path.resolve(screenshotDir, 'screenshot.png');
+          - name: 🖥 Setup Node.js and dependencies
+            run: |
+              # Setup Node.js - використовуємо стабільну версію
+              echo "🔧 Setting up Node.js..."
+              curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+              sudo apt-get install -y nodejs
               
-              if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir, { recursive: true });
-              if (fs.existsSync(screenshotPath)) fs.unlinkSync(screenshotPath);
+              # Перевіряємо встановлення Node.js
+              echo "Node.js version: $(node --version)"
+              echo "npm version: $(npm --version)"
               
-              browser = await puppeteer.launch({
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-web-security'],
-                executablePath: '/usr/bin/google-chrome'
-              });
+              # Setup Chrome
+              echo "🌐 Setting up Chrome..."
+              wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg
+              echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+              sudo apt-get update
+              sudo apt-get install -y google-chrome-stable jq libgbm-dev
               
-              const page = await browser.newPage();
-              const githubPages = 'https://' + '${{ github.repository_owner }}' + '.github.io/' + '${{ github.event.repository.name }}' + '/';
-              const indexPath = path.join(process.cwd(), 'index.html');
+              # Перевіряємо встановлення Chrome
+              echo "Chrome version: $(google-chrome-stable --version || echo 'Chrome not available')"
               
-              let targetUrl;
-              let urlType;
-              let shouldTakeScreenshot = false;
+              # Install Node dependencies з обхідними шляхами для помилок
+              echo "📦 Installing Puppeteer..."
               
-              if (fs.existsSync(indexPath)) {
-                targetUrl = 'file://' + indexPath;
-                urlType = 'local file';
-                shouldTakeScreenshot = true;
-                console.log('📁 Found local index.html file');
-              } else {
-                targetUrl = githubPages;
-                urlType = 'GitHub Pages';
-                console.log('🌐 Checking GitHub Pages availability...');
+              # Спробуємо кілька підходів до встановлення puppeteer
+              MAX_RETRIES=3
+              RETRY_COUNT=0
+              INSTALL_SUCCESS=false
+              
+              while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$INSTALL_SUCCESS" = "false" ]; do
+                echo "Attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES..."
                 
-                // Перевіряємо доступність GitHub Pages перед створенням скриншоту
+                # Спробуємо різні реєстри та підходи
+                if [ $RETRY_COUNT -eq 0 ]; then
+                  # Перша спроба - стандартний реєстр
+                  npm config set registry https://registry.npmjs.org/
+                  npm install --no-package-lock --no-save puppeteer@latest
+                elif [ $RETRY_COUNT -eq 1 ]; then
+                  # Друга спроба - з очищенням кешу
+                  npm cache clean --force
+                  npm install --no-package-lock --no-save puppeteer@latest --fetch-retry-mintimeout 20000 --fetch-retry-maxtimeout 120000
+                else
+                  # Третя спроба - альтернативний підхід
+                  npm install --no-package-lock --no-save puppeteer@latest --ignore-scripts
+                fi
+                
+                # Перевіряємо чи встановлено puppeteer
+                if [ -d "node_modules/puppeteer" ] || [ -f "node_modules/puppeteer/package.json" ]; then
+                  INSTALL_SUCCESS=true
+                  echo "✅ Puppeteer installed successfully"
+                else
+                  RETRY_COUNT=$((RETRY_COUNT + 1))
+                  echo "❌ Puppeteer installation failed, retrying in 5 seconds..."
+                  sleep 5
+                fi
+              done
+              
+              # Якщо всі спроби невдалі, спробуємо альтернативний пакет
+              if [ "$INSTALL_SUCCESS" = "false" ]; then
+                echo "⚠️ Falling back to puppeteer-core..."
+                npm install --no-package-lock --no-save puppeteer-core@latest
+                
+                # Створюємо символічне посилання для сумісності
+                if [ -d "node_modules/puppeteer-core" ] && [ ! -d "node_modules/puppeteer" ]; then
+                  ln -s puppeteer-core node_modules/puppeteer
+                  echo "✅ Using puppeteer-core as fallback"
+                fi
+              fi
+              
+              # Перевіряємо наявність puppeteer
+              if [ -d "node_modules/puppeteer" ]; then
+                echo "✅ Puppeteer is available: $(node -e \"console.log(require('./node_modules/puppeteer/package.json').version)\")"
+              else
+                echo "❌ Puppeteer could not be installed - screenshot functionality may not work"
+                echo "SCREENSHOT_DEPENDENCIES_AVAILABLE=false" >> $GITHUB_ENV
+                exit 0  # Продовжуємо workflow навіть без puppeteer
+              fi
+              
+              echo "SCREENSHOT_DEPENDENCIES_AVAILABLE=true" >> $GITHUB_ENV
+              echo "✅ All dependencies installed"
+          - name: 📸 Generate screenshot
+            run: |
+              # Перевіряємо чи встановлені необхідні залежності
+              if [ "$SCREENSHOT_DEPENDENCIES_AVAILABLE" = "false" ]; then
+                echo "❌ Screenshot dependencies not available - skipping screenshot"
+                echo "SCREENSHOT_CREATED=false" >> $GITHUB_ENV
+                exit 0
+              fi
+              
+              SCREENSHOT_CREATED=false
+
+              node -e "
+              const puppeteer = require('puppeteer');
+              const fs = require('fs');
+              const path = require('path');
+              const { execSync } = require('child_process');
+
+              async function takeScreenshot() {
+                let browser;
                 try {
-                  const response = await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 15000 });
-                  const pageTitle = await page.title();
-                  const pageContent = await page.content();
+                  const screenshotDir = process.env.SCREENSHOT_DIR || 'assets';
+                  const screenshotPath = path.resolve(screenshotDir, 'screenshot.png');
                   
-                  // Перевіряємо на помилки 404, 503 або інші проблеми
-                  if (response.status() === 404) {
-                    console.log('❌ GitHub Pages returns 404 - site not found');
-                    console.log('ℹ️ Reason: GitHub Pages is not set up or deployed for this repository');
-                  } else if (response.status() >= 400) {
-                    console.log('❌ GitHub Pages returns error status:', response.status());
-                    console.log('ℹ️ Reason: Server error or site unavailable');
-                  } else if (pageTitle.includes('404') || pageContent.includes('There isn\\'t a GitHub Pages site here')) {
-                    console.log('❌ GitHub Pages shows 404 content - site not properly configured');
-                    console.log('ℹ️ Reason: GitHub Pages exists but shows error page');
-                  } else if (pageContent.includes('github.io') && pageContent.length < 1000) {
-                    console.log('❌ GitHub Pages shows minimal/error content');
-                    console.log('ℹ️ Reason: Site appears to be a placeholder or error page');
-                  } else {
-                    console.log('✅ GitHub Pages is accessible and has content');
-                    shouldTakeScreenshot = true;
+                  if (!fs.existsSync(screenshotDir)) fs.mkdirSync(screenshotDir, { recursive: true });
+                  if (fs.existsSync(screenshotPath)) fs.unlinkSync(screenshotPath);
+                  
+                  // Перевіряємо доступність Chrome
+                  let chromeExecutable = '/usr/bin/google-chrome';
+                  if (!fs.existsSync(chromeExecutable)) {
+                    // Шукаємо альтернативні шляхи до Chrome
+                    try {
+                      const chromePath = execSync('which google-chrome-stable || which google-chrome', { encoding: 'utf8' }).trim();
+                      if (chromePath) chromeExecutable = chromePath;
+                    } catch (e) {
+                      console.log('❌ Chrome not found:', e.message);
+                      console.log('SCREENSHOT_SUCCESS=false');
+                      return;
+                    }
                   }
-                } catch (navError) {
-                  console.log('❌ Cannot access GitHub Pages:', navError.message);
-                  console.log('ℹ️ Reason: Network error or site is completely unavailable');
+
+                  console.log('Using Chrome executable:', chromeExecutable);
+                  
+                  const browserArgs = [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--headless'
+                  ];
+
+                  // Додаткові аргументи для стабільності
+                  if (process.env.CI) {
+                    browserArgs.push('--single-process');
+                    browserArgs.push('--no-zygote');
+                    browserArgs.push('--no-first-run');
+                    browserArgs.push('--disable-extensions');
+                  }
+
+                  browser = await puppeteer.launch({
+                    args: browserArgs,
+                    executablePath: chromeExecutable,
+                    timeout: 60000,
+                    dumpio: true  // Детальні логи для налагодження
+                  });
+                  
+                  const page = await browser.newPage();
+                  await page.setViewport({ width: 1280, height: 800 });
+                  
+                  const githubPages = 'https://' + '${{ github.repository_owner }}' + '.github.io/' + '${{ github.event.repository.name }}' + '/';
+                  const indexPath = path.join(process.cwd(), 'index.html');
+                  
+                  let targetUrl;
+                  let urlType;
+                  let shouldTakeScreenshot = false;
+                  
+                  if (fs.existsSync(indexPath)) {
+                    targetUrl = 'file://' + indexPath;
+                    urlType = 'local file';
+                    shouldTakeScreenshot = true;
+                    console.log('📁 Found local index.html file');
+                  } else {
+                    targetUrl = githubPages;
+                    urlType = 'GitHub Pages';
+                    console.log('🌐 Checking GitHub Pages availability...');
+                    
+                    // Перевіряємо доступність GitHub Pages
+                    try {
+                      const response = await page.goto(targetUrl, { 
+                        waitUntil: 'networkidle0', 
+                        timeout: 30000 
+                      });
+                      
+                      if (response && response.status() === 200) {
+                        const pageTitle = await page.title();
+                        const pageContent = await page.content();
+                        
+                        // Додаткові перевірки вмісту
+                        const hasMeaningfulContent = pageContent.length > 500 && 
+                                                   !pageTitle.includes('404') &&
+                                                   !pageContent.includes('There isn\\'t a GitHub Pages site here');
+                        
+                        if (hasMeaningfulContent) {
+                          console.log('✅ GitHub Pages is accessible with meaningful content');
+                          shouldTakeScreenshot = true;
+                        } else {
+                          console.log('❌ GitHub Pages has insufficient content');
+                        }
+                      } else {
+                        console.log('❌ GitHub Pages returned status:', response?.status() || 'unknown');
+                      }
+                    } catch (navError) {
+                      console.log('❌ Cannot access GitHub Pages:', navError.message);
+                    }
+                  }
+                  
+                  if (!shouldTakeScreenshot) {
+                    console.log('🚫 Skipping screenshot - no valid content found');
+                    console.log('SCREENSHOT_SUCCESS=false');
+                    return;
+                  }
+                  
+                  console.log('🔗 Taking screenshot from', urlType + ':', targetUrl);
+                  
+                  try {
+                    await page.goto(targetUrl, { 
+                      waitUntil: 'networkidle0', 
+                      timeout: 60000 
+                    });
+                    
+                    // Додаткове очікування для повного завантаження
+                    await page.waitForTimeout(5000);
+                    
+                    // Прокручуємо сторінку для повного завантаження контенту
+                    await page.evaluate(async () => {
+                      await new Promise(resolve => {
+                        let totalHeight = 0;
+                        const distance = 100;
+                        const timer = setInterval(() => {
+                          const scrollHeight = document.body.scrollHeight;
+                          window.scrollBy(0, distance);
+                          totalHeight += distance;
+                          
+                          if (totalHeight >= scrollHeight) {
+                            clearInterval(timer);
+                            resolve();
+                          }
+                        }, 100);
+                      });
+                    });
+                    
+                    await page.waitForTimeout(2000);
+                    
+                    // Повертаємось нагору
+                    await page.evaluate(() => window.scrollTo(0, 0));
+                    await page.waitForTimeout(1000);
+
+                    // Робимо скріншот
+                    await page.screenshot({ 
+                      path: screenshotPath, 
+                      fullPage: true,
+                      quality: 80,
+                      type: 'png'
+                    });
+                    
+                    if (fs.existsSync(screenshotPath)) {
+                      const stats = fs.statSync(screenshotPath);
+                      const fileSizeKB = Math.round(stats.size / 1024);
+                      
+                      if (stats.size > 1000) {  // Мінімальний розмір 1KB
+                        console.log('✅ Screenshot created successfully:', fileSizeKB + 'KB');
+                        console.log('SCREENSHOT_SUCCESS=true');
+                      } else {
+                        console.log('❌ Screenshot file is too small:', fileSizeKB + 'KB');
+                        fs.unlinkSync(screenshotPath);
+                        console.log('SCREENSHOT_SUCCESS=false');
+                      }
+                    } else {
+                      console.log('❌ Screenshot file was not created');
+                      console.log('SCREENSHOT_SUCCESS=false');
+                    }
+                    
+                  } catch (screenshotError) {
+                    console.log('❌ Screenshot capture failed:', screenshotError.message);
+                    console.log('SCREENSHOT_SUCCESS=false');
+                  }
+                  
+                } catch (error) {
+                  console.log('❌ Browser setup failed:', error.message);
+                  console.log('SCREENSHOT_SUCCESS=false');
+                } finally {
+                  if (browser) {
+                    try {
+                      await browser.close();
+                    } catch (closeError) {
+                      console.log('⚠️ Browser close error:', closeError.message);
+                    }
+                  }
                 }
               }
-              
-              if (!shouldTakeScreenshot) {
-                console.log('🚫 Skipping screenshot - no valid content found');
+
+              takeScreenshot().catch(error => {
+                console.log('❌ Unhandled error in screenshot process:', error.message);
                 console.log('SCREENSHOT_SUCCESS=false');
-                return;
-              }
-              
-              console.log('🔗 Taking screenshot from', urlType + ':', targetUrl);
-              
-              // Якщо це локальний файл, завантажуємо його зараз
-              if (urlType === 'local file') {
-                await page.goto(targetUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-              }
-              
-              // Прокручуємо сторінку для повного завантаження контенту
-              await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              await page.evaluate(() => window.scrollTo(0, 0));
-              await new Promise(resolve => setTimeout(resolve, 1000));
+              });
+              " | tee screenshot_output.log
 
-              await page.screenshot({ path: screenshotPath, fullPage: true });
-              
-              const stats = fs.statSync(screenshotPath);
-              const fileSizeKB = Math.round(stats.size / 1024);
-              
-              if (stats.size > 0) {
-                console.log('✅ Screenshot created successfully:', fileSizeKB + 'KB from', urlType);
-                console.log('SCREENSHOT_SUCCESS=true');
-              } else {
-                console.log('❌ Screenshot file is empty');
-                if (fs.existsSync(screenshotPath)) fs.unlinkSync(screenshotPath);
-                console.log('SCREENSHOT_SUCCESS=false');
-              }
-              
-            } catch (error) {
-              console.log('❌ Screenshot failed:', error.message);
-              
-              // Визначаємо причину помилки
-              const indexPath = path.join(process.cwd(), 'index.html');
-              if (!fs.existsSync(indexPath)) {
-                console.log('ℹ️ Reason: No index.html found and GitHub Pages is not available');
-              } else {
-                console.log('ℹ️ Reason: Technical error during screenshot capture');
-              }
-              
-              console.log('SCREENSHOT_SUCCESS=false');
-            } finally {
-              if (browser) await browser.close();
-            }
-          }
+              # Перевіряємо результат створення скриншоту
+              if grep -q "SCREENSHOT_SUCCESS=true" screenshot_output.log; then
+                echo "SCREENSHOT_CREATED=true" >> $GITHUB_ENV
+                echo "🎯 Screenshot created successfully"
+              else
+                echo "SCREENSHOT_CREATED=false" >> $GITHUB_ENV
+                echo "⏭️ Screenshot creation failed"
+              fi
 
-          takeScreenshot().catch(console.error);
-          " | tee screenshot_output.log
+              # Додаткова перевірка наявності файлу
+              if [ -f "$SCREENSHOT_DIR/screenshot.png" ]; then
+                FILE_SIZE=$(stat -f%z "$SCREENSHOT_DIR/screenshot.png" 2>/dev/null || stat -c%s "$SCREENSHOT_DIR/screenshot.png" 2>/dev/null || echo 0)
+                if [ "$FILE_SIZE" -lt 1000 ]; then
+                  echo "⚠️ Screenshot file exists but is too small ($FILE_SIZE bytes), removing..."
+                  rm -f "$SCREENSHOT_DIR/screenshot.png"
+                  echo "SCREENSHOT_CREATED=false" >> $GITHUB_ENV
+                fi
+              fi
 
-          # Перевіряємо результат створення скриншоту
-          if grep -q "SCREENSHOT_SUCCESS=true" screenshot_output.log; then
-            echo "SCREENSHOT_CREATED=true" >> $GITHUB_ENV
-            echo "🎯 Screenshot will be included in README"
-          else
-            echo "SCREENSHOT_CREATED=false" >> $GITHUB_ENV
-            echo "⏭️ Screenshot section will be skipped in README"
-          fi
-
-          rm -f screenshot_output.log
-
+              rm -f screenshot_output.log
       - name: 📝 Update README with all content
         run: |
           REPO_URL="https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}"
