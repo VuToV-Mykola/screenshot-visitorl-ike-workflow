@@ -7,6 +7,8 @@
 [![📦 Size](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/VuToV-Mykola/screenshot-visitor-like-workflow/main/assets/db/repo-size.json)](https://github.com/VuToV-Mykola/screenshot-visitor-like-workflow)
 [![🔤 Language](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/VuToV-Mykola/screenshot-visitor-like-workflow/main/assets/db/repo-language.json)](https://github.com/VuToV-Mykola/screenshot-visitor-like-workflow)
 [![📄 License](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/VuToV-Mykola/screenshot-visitor-like-workflow/main/assets/db/repo-license.json)](https://github.com/VuToV-Mykola/screenshot-visitor-like-workflow/blob/main/LICENSE)
+## 📸 Скріншот проекту
+![Project Screenshot](./assets/screenshot.png)
 <!-- END:AUTOGEN -->
 
 # 🚀 Інструкція з перенесення Screenshot & Visitor Workflow
